@@ -1,12 +1,7 @@
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from schemas.user_growth import UserAnalyticsResponse
-from schemas.engagement import ConversionAnalyticsResponse
-from schemas.economics import EconomicsAnalyticsResponse
-from schemas.referrals import ReferralAnalyticsResponse
-from schemas.operations import OperationsAnalyticsResponse
 from routers import users, conversions, economics, referrals, operations
-from database import get_db, engine, Base
+from database import engine
 import models
 
 models.Base.metadata.create_all(bind=engine)

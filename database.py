@@ -2,7 +2,6 @@ import os
 from sqlalchemy.orm import sessionmaker
 from sqlalchemy.ext.declarative import declarative_base
 from dotenv import load_dotenv
-import models
 from sqlalchemy import create_engine
 
 load_dotenv()

@@ -3,6 +3,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from routers import users, conversions, economics, referrals, operations
 from database import engine
 import models
+from fastapi.responses import RedirectResponse
 
 models.Base.metadata.create_all(bind=engine)
 
@@ -30,3 +31,7 @@ app.include_router(operations.router)
 @app.get("/health", tags=["System"])
 def health_check():
     return {"status": "operational", "version": "1.0.0"}
+
+@app.get("/", include_in_schema=False)
+def root_redirect():
+    return RedirectResponse(url="/docs")

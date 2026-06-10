@@ -21,14 +21,14 @@ def get_user_analytics(db: Session = Depends(get_db)):
         return {
             "user_base": {
                 "cumulative_total": 9380,
-                "growth_metrics": {
+                "growth_metric": {
                     "june_mom_percent": -71.2,
                     "may_mom_percent": 98.2,
                     "april_mom_percent": 5.8
                 },
-                "historical_buckets": [
-                    { "period": "june_9_to_may_9", "signups": 288 },
-                    { "period": "may_9_to_apr_9", "signups": 1000 }
+                "historical_data": [
+                    { "period": "june_9_to_may_9", "users_onboarded": 288 },
+                    { "period": "may_9_to_apr_9", "users_onboarded": 1000 }
                 ]
             },
             "status_distribution": {
@@ -41,8 +41,8 @@ def get_user_analytics(db: Session = Depends(get_db)):
                 "organic": 8494,
                 "referred": 886,
                 "email_capture": {
-                    "total_captured": 6413,
-                    "capture_rate_percent": 68.37
+                    "total_emails": 6413,
+                    "email_conversion_rate": 68.37
                 }
             }
         }

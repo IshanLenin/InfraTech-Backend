@@ -32,9 +32,9 @@ def get_economics_analytics(
         # Ledger Query with Date Filters
         ledger_query = """
             SELECT 
-                COUNT(id) FILTER (WHERE type = 'pending_reward') AS pending,
-                COUNT(id) FILTER (WHERE type IN ('final_reward', 'redeem_cash_back')) AS completed,
-                COUNT(id) FILTER (WHERE type = 'rejected_reward') AS cancelled
+                COUNT(id) FILTER (WHERE type in ('pending_reward', 'signup_rewardP', 'refer_rewardP', 'referral_rewardP')) AS pending,
+                COUNT(id) FILTER (WHERE type IN ('final_reward', 'redeem_cash_back', 'signup_reward', 'refer_reward', 'referral_reward', 'refer_bonus')) AS completed,
+                COUNT(id) FILTER (WHERE type = 'request_cash_back') AS payout_requests
             FROM reward
             WHERE 1=1
         """
@@ -56,7 +56,10 @@ def get_economics_analytics(
             params["max_amount"] = max_amount
         
         if reward_type:
-            if reward_type in ["pending_reward", "final_reward", "redeem_cash_back", "rejected_reward"]:
+            if reward_type in ["pending_reward", "final_reward", "redeem_cash_back", 
+                            "rejected_reward","signup_rewardP","refer_rewardP",
+                            "referral_rewardP","request_cash_back","refer_bonus", 
+                            "signup_reward", "refer_reward", "referral_reward"]:
                 ledger_query += " AND type = :reward_type"
                 params["reward_type"] = reward_type
             else:
@@ -69,7 +72,7 @@ def get_economics_analytics(
             SELECT 
                 SUM(pp_points) AS issued,
                 SUM(latest_pp_point) AS balance
-            FROM users;
+            FROM reward;
         """)
         loyalty_result = db.execute(loyalty_query).fetchone()
 
@@ -77,7 +80,7 @@ def get_economics_analytics(
             "cashback_cases": {
                 "pending": ledger_result.pending if ledger_result and ledger_result.pending else 0,
                 "completed": ledger_result.completed if ledger_result and ledger_result.completed else 0,
-                "cancelled": ledger_result.cancelled if ledger_result and ledger_result.cancelled else 0
+                "requests": ledger_result.payout_requests if ledger_result and ledger_result.payout_requests else 0
             },
             "loyalty_currency": {
                 "total_pp_points_issued": loyalty_result.issued if loyalty_result and loyalty_result.issued else 0,
@@ -91,34 +94,50 @@ def get_economics_analytics(
 def search_brand_cashback(
     db: Session = Depends(get_db),
     query: Optional[str] = Query(None, description="Search brand by name (e.g., 'Amazon')"),
-    brand_id: Optional[int] = Query(None, description="Filter directly by brand ID")
+    brand_id: Optional[int] = Query(None, description="Filter directly by brand ID"),
+    category_name: Optional[str] = Query(None, description="Filter by category")
 ):
     try:
         params = {}
         # 1. Base SQL leveraging relational JOINs across the catalog and ledger
+        # 1. The Updated SQL with Range Mathematics
         sql = """
             SELECT 
                 b.id AS brand_id,
                 b.name AS brand_name,
-                b.category,
-                COALESCE(SUM(r.amount) FILTER (WHERE r.type IN ('final_reward', 'redeem_cash_back')), 0.00) AS total_cashback,
-                COALESCE(SUM(r.amount) FILTER (WHERE r.type = 'pending_reward'), 0.00) AS pending_cashback,
+                c.slug AS category,
+                
+                -- Calculate Expected Value of Completed Rewards
+                COALESCE(SUM((d.cash_back_low + d.cash_back_high) / 2.0) FILTER (WHERE r.type IN ('final_reward', 'redeem_cash_back', 'signup_reward', 'refer_reward', 'referral_reward', 'refer_bonus')), 0.00) AS total_cashback,
+                
+                -- Calculate Expected Value of Pending Liabilities
+                COALESCE(SUM((d.cash_back_low + d.cash_back_high) / 2.0) FILTER (WHERE r.type IN ('pending_reward', 'signup_rewardP', 'refer_rewardP', 'referral_rewardP')), 0.00) AS pending_cashback,
+                
                 COUNT(r.id) AS transaction_count
             FROM brands b
+            
+            -- THE REFINED FUZZY JOIN
+            LEFT JOIN categories c 
+                ON b.seo_keywords::text ILIKE '%' || c.seo_keywords::text || '%' 
+                OR b.seo_keywords::text ILIKE '%' || c.seo_title::text || '%'
+            
             LEFT JOIN deal d ON b.id = d.brand_id
             LEFT JOIN reward r ON d.id = r.deal_id
             WHERE 1=1
         """
         
-        # 2. Inject dynamic search parameters safely
+        # 2. Inject parameters safely
         if brand_id:
             sql += " AND b.id = :brand_id"
             params["brand_id"] = brand_id
         if query:
             sql += " AND b.name ILIKE :query"
             params["query"] = f"%{query}%"
+        if category_name:
+            sql += " AND (c.slug ILIKE :category_name OR c.seo_title ILIKE :category_name)"
+            params["category_name"] = f"%{category_name}%"
             
-        sql += " GROUP BY b.id, b.name, b.category ORDER BY total_cashback DESC;"
+        sql += " GROUP BY b.id, b.name, c.slug ORDER BY total_cashback DESC;"
         
         results = db.execute(text(sql), params).fetchall()
         

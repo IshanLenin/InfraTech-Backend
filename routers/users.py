@@ -17,7 +17,7 @@ def get_user_analytics(
     start_date: Optional[datetime] = Query(None, description="Filter from date (YYYY-MM-DD)"),
     end_date: Optional[datetime] = Query(None, description="Filter up to date (YYYY-MM-DD)"),
     is_verified: Optional[bool] = Query(None, description="Filter by verification status"),
-    account_status: Optional[str] = Query(None, description="Filter by account status")
+    account_status: Optional[bool] = Query(None, description="Filter by account status")
 ):
     try:
         
@@ -31,8 +31,8 @@ def get_user_analytics(
         base_query = """
             SELECT 
                 COUNT(id) AS total_users,
-                COUNT(id) FILTER (WHERE status = 'active') AS active_users,
-                COUNT(id) FILTER (WHERE status = 'inactive') AS inactive_users,
+                COUNT(id) FILTER (WHERE status = 'true') AS active_users,
+                COUNT(id) FILTER (WHERE status = 'false') AS inactive_users,
                 COUNT(id) FILTER (WHERE is_verified = TRUE) AS verified_users,
                 COUNT(id) FILTER (WHERE referrer_id IS NOT NULL) AS referred_users,
                 COUNT(email) AS total_emails
@@ -51,11 +51,9 @@ def get_user_analytics(
         if is_verified is not True:
             base_query += " AND is_verified = False"
         
-        if account_status is not None and account_status in ['active', 'inactive']:
+        if account_status:
             base_query += " AND status = :account_status"
             params["account_status"] = account_status
-        else:
-            raise HTTPException(status_code=400, detail=f"Invalid account status: {account_status}")
 
         time_series_query = f"""
             WITH monthly_stats AS (

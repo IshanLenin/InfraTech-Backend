@@ -37,10 +37,10 @@ def get_operations_analytics(
         # 1. Deals Query
         deal_query = f"""
             SELECT 
-                COUNT(id) FILTER (WHERE status = 'active') AS active_deals,
-                COUNT(id) FILTER (WHERE status = 'inactive') AS inactive_deals,
-                COUNT(id) FILTER (WHERE has_seo_metadata = TRUE) AS seo_complete,
-                COUNT(id) FILTER (WHERE has_seo_metadata = FALSE) AS seo_missing
+                COUNT(id) FILTER (WHERE status = true) AS active_deals,
+                COUNT(id) FILTER (WHERE status = false) AS inactive_deals,
+                COUNT(id) FILTER (WHERE seo_title IS NOT NULL) AS seo_complete,
+                COUNT(id) FILTER (WHERE seo_title IS NULL) AS seo_missing
             FROM deal WHERE 1=1 {date_filter_sql}
         """
         deal_res = db.execute(text(deal_query), params).fetchone()
@@ -49,8 +49,8 @@ def get_operations_analytics(
         ticket_query = f"""
             SELECT 
                 COUNT(id) AS total_tickets,
-                COUNT(id) FILTER (WHERE status = 'unresolved_backlog') AS unresolved,
-                COUNT(id) FILTER (WHERE status = 'resolved_cleanly') AS resolved
+                COUNT(id) FILTER (WHERE status = false) AS unresolved,
+                COUNT(id) FILTER (WHERE status = true) AS resolved
             FROM tickets WHERE 1=1 {date_filter_sql}
         """
         ticket_res = db.execute(text(ticket_query), params).fetchone()
@@ -59,9 +59,9 @@ def get_operations_analytics(
         notif_query = f"""
             SELECT 
                 COUNT(id) AS total_sent,
-                COUNT(id) FILTER (WHERE is_read = TRUE) AS total_read,
+                COUNT(id) FILTER (WHERE read_status = true) AS total_read,
                 COUNT(DISTINCT user_id) AS distinct_users
-            FROM notifications WHERE 1=1 {date_filter_sql}
+            FROM user_notifications WHERE 1=1 {date_filter_sql}
         """
         notif_res = db.execute(text(notif_query), params).fetchone()
 
@@ -72,7 +72,7 @@ def get_operations_analytics(
             SELECT 
                 COUNT(id) AS successful_rewards
             FROM reward 
-            WHERE type IN ('final_reward', 'redeem_cash_back') {date_filter_sql}
+            WHERE type IN ('final_reward', 'redeem_cash_back', 'signup_reward', 'refer_reward', 'referral_reward', 'refer_bonus') {date_filter_sql}
         """
         reward_res = db.execute(text(reward_query), params).fetchone()
 

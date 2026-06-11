@@ -19,16 +19,23 @@ def get_conversion_analytics(
     end_date: Optional[datetime] = Query(None, description="Filter up to date")
 ):
     try:
-
         if start_date and end_date is not None and start_date > end_date:
             raise HTTPException(status_code = 400, detail = "Invalid date range")
         
-        base_query = """
+        # 1. Base SQL leveraging the expanded dump file types
+        base_query = f"""
             SELECT 
+                -- Top of funnel: Deal clicks
                 COUNT(id) FILTER (WHERE type = 'redirect_reward') AS total_redirects,
-                COUNT(id) FILTER (WHERE type = 'pending_reward') AS total_pending,
-                COUNT(id) FILTER (WHERE type = 'final_reward') AS total_final,
-                COUNT(id) FILTER (WHERE receipt_uploaded = TRUE) AS total_receipts
+                
+                -- Middle of funnel: All pending states (Cashback + Viral Bounties)
+                COUNT(id) FILTER (WHERE type IN ('pending_reward', 'signup_rewardP', 'refer_rewardP', 'referral_rewardP')) AS total_pending,
+                
+                -- Bottom of funnel: All completed financial disbursements
+                COUNT(id) FILTER (WHERE type IN ('final_reward', 'redeem_cash_back', 'signup_reward', 'refer_reward', 'referral_reward', 'refer_bonus')) AS total_final,
+                
+                -- Action metrics: Proxying receipt uploads by checking for a positive cashback amount
+                COUNT(id) FILTER (WHERE cash_back > 0) AS total_receipts
             FROM reward
             WHERE 1=1
         """

@@ -1,48 +1,77 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
 from sqlalchemy import text
+from typing import Optional
+from datetime import datetime
 from database import get_db
 from schemas.user_growth import UserAnalyticsResponse
 
-router = APIRouter(prefix="/api/v1/admin/analytics/users", tags=["Users"])
+router = APIRouter(
+    prefix="/api/v1/admin/analytics/users",
+    tags=["User Growth & Profile Analytics"]
+)
 
 @router.get("", response_model=UserAnalyticsResponse)
-def get_user_analytics(db: Session = Depends(get_db)):
+def get_user_analytics(
+    db: Session = Depends(get_db),
+    start_date: Optional[datetime] = Query(None, description="Filter from date (YYYY-MM-DD)"),
+    end_date: Optional[datetime] = Query(None, description="Filter up to date (YYYY-MM-DD)")
+):
     try:
-        status_query = text("""
+        # We fetch all the metrics in a single database hit for maximum performance
+        base_query = """
             SELECT 
-                COUNT(id) AS total,
-                COUNT(id) FILTER (WHERE status = 'active') AS active,
-                COUNT(id) FILTER (WHERE status = 'inactive') AS inactive
-            FROM users;
-        """)
-        status_result = db.execute(status_query).fetchone()
+                COUNT(id) AS total_users,
+                COUNT(id) FILTER (WHERE status = 'active') AS active_users,
+                COUNT(id) FILTER (WHERE status = 'inactive') AS inactive_users,
+                COUNT(id) FILTER (WHERE is_verified = TRUE) AS verified_users,
+                COUNT(id) FILTER (WHERE referrer_id IS NOT NULL) AS referred_users,
+                COUNT(email) AS total_emails
+            FROM users
+            WHERE 1=1
+        """
+        
+        # 3. Append date filters safely if the user provided them
+        params = {}
+        if start_date:
+            base_query += " AND created_at >= :start_date"
+            params["start_date"] = start_date
+        if end_date:
+            base_query += " AND created_at <= :end_date"
+            params["end_date"] = end_date
 
+        # Execute with safely bound parameters
+        result = db.execute(text(base_query), params).fetchone()
+
+        # Handle division by zero for the conversion rate
+        total = result.total_users if result and result.total_users > 0 else 1
+        total_emails = result.total_emails if result else 0
+        conversion_rate = round((total_emails / total) * 100, 2)
+        organic_users = total - (result.referred_users if result else 0)
+
+        # 4. Map the live database results to your Pydantic schema
         return {
             "user_base": {
-                "cumulative_total": 9380,
+                "cumulative_total": result.total_users if result else 0,
                 "growth_metric": {
-                    "june_mom_percent": -71.2,
-                    "may_mom_percent": 98.2,
-                    "april_mom_percent": 5.8
+                    "june_mom_percent": 0.0,  # Note: MoM requires a complex window function, setting to 0 for now
+                    "may_mom_percent": 0.0,
+                    "april_mom_percent": 0.0
                 },
-                "historical_data": [
-                    { "period": "june_9_to_may_9", "users_onboarded": 288 },
-                    { "period": "may_9_to_apr_9", "users_onboarded": 1000 }
-                ]
+                "historical_data": [] # Placeholder until we write the cohort aggregation query
             },
             "status_distribution": {
-                "verified": status_result.total if status_result else 9380,
-                "unverified": 0,
-                "active": status_result.active if status_result else 9029,
-                "inactive": status_result.inactive if status_result else 351
+                "verified": result.verified_users if result else 0,
+                "unverified": (result.total_users - result.verified_users) if result else 0,
+                "active": result.active_users if result else 0,
+                "inactive": result.inactive_users if result else 0
             },
             "acquisition": {
-                "organic": 8494,
-                "referred": 886,
+                "organic": organic_users,
+                "referred": result.referred_users if result else 0,
                 "email_capture": {
-                    "total_emails": 6413,
-                    "email_conversion_rate": 68.37
+                    "total_emails": total_emails,
+                    "email_conversion_rate": conversion_rate
                 }
             }
         }

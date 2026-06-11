@@ -14,7 +14,6 @@ router = APIRouter(
 )
 
 @router.get("", response_model=OperationsAnalyticsResponse)
-@router.get("", response_model=OperationsAnalyticsResponse)
 def get_operations_analytics(
     db: Session = Depends(get_db),
     start_date: Optional[datetime] = Query(None, description="Filter from date"),
@@ -62,7 +61,26 @@ def get_operations_analytics(
         """
         notif_res = db.execute(text(notif_query), params).fetchone()
 
-        # Math logic
+        # ---------------------------------------------------------
+        # 4. THE COMPLEX REWARD RATIO LOGIC
+        # ---------------------------------------------------------
+        reward_query = f"""
+            SELECT 
+                COUNT(id) AS successful_rewards
+            FROM reward 
+            WHERE type IN ('final_reward', 'redeem_cash_back') {date_filter_sql}
+        """
+        reward_res = db.execute(text(reward_query), params).fetchone()
+
+        # Extract values safely
+        total_tickets = ticket_res.total_tickets if ticket_res and ticket_res.total_tickets else 0
+        successful_rewards = reward_res.successful_rewards if reward_res and reward_res.successful_rewards else 0
+        
+        # Calculate the operational friction ratio (Tickets per Reward)
+        # We cap it at 4 decimal places just like your original system dump (e.g., 0.1423)
+        friction_ratio = round(total_tickets / successful_rewards, 4) if successful_rewards > 0 else 0.0
+
+        # Calculate notification math
         sent = notif_res.total_sent if notif_res and notif_res.total_sent else 0
         read = notif_res.total_read if notif_res and notif_res.total_read else 0
         read_rate = round((read / sent * 100), 2) if sent > 0 else 0.0
@@ -79,9 +97,9 @@ def get_operations_analytics(
             },
             "support_load": {
                 "global_metrics": {
-                    "total_tickets": ticket_res.total_tickets if ticket_res and ticket_res.total_tickets else 0,
-                    "successful_rewards": 0, # Requires complex cross-join with rewards, mocked to 0 for now
-                    "tickets_per_reward_ratio": 0.0
+                    "total_tickets": total_tickets,
+                    "successful_rewards": successful_rewards,
+                    "tickets_per_reward_ratio": friction_ratio
                 },
                 "backlog_aging": [
                     { "backlog_flag": "unresolved_backlog", "ticket_count": ticket_res.unresolved if ticket_res else 0, "avg_days_open": 0.0 },

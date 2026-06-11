@@ -18,6 +18,8 @@ def get_user_analytics(
     end_date: Optional[datetime] = Query(None, description="Filter up to date (YYYY-MM-DD)")
 ):
     try:
+        params=""
+        date_filter_sql = ""
         # We fetch all the metrics in a single database hit for maximum performance
         base_query = """
             SELECT 
@@ -30,9 +32,59 @@ def get_user_analytics(
             FROM users
             WHERE 1=1
         """
+
+        time_series_query = f"""
+            WITH monthly_stats AS (
+                SELECT 
+                    DATE_TRUNC('month', created_at) AS active_month,
+                    COUNT(id) AS new_users
+                FROM users
+                WHERE 1=1 {date_filter_sql if 'date_filter_sql' in locals() else ""}
+                GROUP BY DATE_TRUNC('month', created_at)
+            ),
+            growth_calc AS (
+                SELECT 
+                    active_month,
+                    new_users,
+                    LAG(new_users) OVER (ORDER BY active_month ASC) AS prev_month_users
+                FROM monthly_stats
+            )
+            SELECT 
+                active_month,
+                new_users,
+                CASE 
+                    WHEN prev_month_users IS NULL OR prev_month_users = 0 THEN 0.0
+                    ELSE ROUND(((new_users - prev_month_users)::numeric / prev_month_users) * 100, 2)
+                END AS mom_growth
+            FROM growth_calc
+            ORDER BY active_month DESC
+            LIMIT 6;
+        """
+        
+        ts_results = db.execute(text(time_series_query), params).fetchall()
+
+        # Parse the results into the exact lists and dictionaries Pydantic expects
+        historical_buckets = []
+        growth_metrics_dict = {"june_mom_percent": 0.0, "may_mom_percent": 0.0, "april_mom_percent": 0.0}
+        
+        for idx, row in enumerate(ts_results):
+            # Format the datetime into a clean string for the frontend charts (e.g., "Jun 2026")
+            month_label = row.active_month.strftime("%b %Y") if row.active_month else "Unknown"
+            
+            historical_buckets.append({
+                "period": month_label,
+                "signups": row.new_users
+            })
+
+            # Map the top 3 most recent months to your specific growth fields
+            if idx == 0:
+                growth_metrics_dict["june_mom_percent"] = float(row.mom_growth)
+            elif idx == 1:
+                growth_metrics_dict["may_mom_percent"] = float(row.mom_growth)
+            elif idx == 2:
+                growth_metrics_dict["april_mom_percent"] = float(row.mom_growth)
         
         # 3. Append date filters safely if the user provided them
-        params = {}
         if start_date:
             base_query += " AND created_at >= :start_date"
             params["start_date"] = start_date
@@ -53,12 +105,8 @@ def get_user_analytics(
         return {
             "user_base": {
                 "cumulative_total": result.total_users if result else 0,
-                "growth_metric": {
-                    "june_mom_percent": 0.0, 
-                    "may_mom_percent": 0.0,
-                    "april_mom_percent": 0.0
-                },
-                "historical_data": [] # Placeholder until we write the cohort aggregation query
+                "growth_metrics": growth_metrics_dict,         
+                "historical_buckets": historical_buckets       
             },
             "status_distribution": {
                 "verified": result.verified_users if result else 0,

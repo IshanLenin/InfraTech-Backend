@@ -3,8 +3,9 @@ from sqlalchemy.orm import Session
 from sqlalchemy import text
 from database import get_db
 from schemas.financials import EconomicsAnalyticsResponse
+from schemas.catalog import BrandCashbackResponse
 from datetime import datetime
-from typing import Optional
+from typing import Optional, List
 from fastapi import Query
 
 router = APIRouter(
@@ -85,3 +86,53 @@ def get_economics_analytics(
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Database execution failed: {str(e)}")
+
+@router.get("/brands/search", response_model=List[BrandCashbackResponse], tags=["Brand Financial Performance"])
+def search_brand_cashback(
+    db: Session = Depends(get_db),
+    query: Optional[str] = Query(None, description="Search brand by name (e.g., 'Amazon')"),
+    brand_id: Optional[int] = Query(None, description="Filter directly by brand ID")
+):
+    try:
+        params = {}
+        # 1. Base SQL leveraging relational JOINs across the catalog and ledger
+        sql = """
+            SELECT 
+                b.id AS brand_id,
+                b.name AS brand_name,
+                b.category,
+                COALESCE(SUM(r.amount) FILTER (WHERE r.type IN ('final_reward', 'redeem_cash_back')), 0.00) AS total_cashback,
+                COALESCE(SUM(r.amount) FILTER (WHERE r.type = 'pending_reward'), 0.00) AS pending_cashback,
+                COUNT(r.id) AS transaction_count
+            FROM brands b
+            LEFT JOIN deal d ON b.id = d.brand_id
+            LEFT JOIN reward r ON d.id = r.deal_id
+            WHERE 1=1
+        """
+        
+        # 2. Inject dynamic search parameters safely
+        if brand_id:
+            sql += " AND b.id = :brand_id"
+            params["brand_id"] = brand_id
+        if query:
+            sql += " AND b.name ILIKE :query"
+            params["query"] = f"%{query}%"
+            
+        sql += " GROUP BY b.id, b.name, b.category ORDER BY total_cashback DESC;"
+        
+        results = db.execute(text(sql), params).fetchall()
+        
+        # 3. Format the flat database rows into the validated schema array
+        return [
+            {
+                "brand_id": row.brand_id,
+                "brand_name": row.brand_name,
+                "category": row.category,
+                "total_cashback_distributed": float(row.total_cashback),
+                "pending_cashback_liability": float(row.pending_cashback),
+                "total_transactions_count": row.transaction_count
+            }
+            for row in results
+        ]
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Database compilation failed: {str(e)}")

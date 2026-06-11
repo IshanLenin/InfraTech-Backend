@@ -1,5 +1,5 @@
 from pydantic import BaseModel,Field
-from typing import List
+from typing import List, Optional
 
 class SEOCoverage(BaseModel):
     completed: int = Field(..., description="Deals with fully optimized meta-attributes")
@@ -35,3 +35,11 @@ class OperationsAnalyticsResponse(BaseModel):
     catalog_status: CatalogStatus
     support_load: SupportLoadSummary
     notification_reach: NotificationReach
+
+class BrandCashbackResponse(BaseModel):
+    brand_id: int
+    brand_name: str
+    category: Optional[str]
+    total_cashback_distributed: float = Field(..., description="Sum of completed cashbacks")
+    pending_cashback_liability: float = Field(..., description="Sum of pending cashbacks")
+    total_transactions_count: int

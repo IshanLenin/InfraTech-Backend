@@ -15,12 +15,16 @@ router = APIRouter(
 def get_user_analytics(
     db: Session = Depends(get_db),
     start_date: Optional[datetime] = Query(None, description="Filter from date (YYYY-MM-DD)"),
-    end_date: Optional[datetime] = Query(None, description="Filter up to date (YYYY-MM-DD)")
+    end_date: Optional[datetime] = Query(None, description="Filter up to date (YYYY-MM-DD)"),
+    is_verified: Optional[bool] = Query(None, description="Filter by verification status"),
+    account_status: Optional[str] = Query(None, description="Filter by account status")
 ):
     try:
+
         params={}
         date_filter_sql = ""
-        # We fetch all the metrics in a single database hit for maximum performance
+
+         # We fetch all the metrics in a single database hit for maximum performance
         base_query = """
             SELECT 
                 COUNT(id) AS total_users,
@@ -29,9 +33,23 @@ def get_user_analytics(
                 COUNT(id) FILTER (WHERE is_verified = TRUE) AS verified_users,
                 COUNT(id) FILTER (WHERE referrer_id IS NOT NULL) AS referred_users,
                 COUNT(email) AS total_emails
-            FROM users
+                FROM users
             WHERE 1=1
         """
+        
+        # 3. Append date filters safely if the user provided them
+        if start_date:
+            base_query += " AND created_at >= :start_date"
+            params["start_date"] = start_date
+        if end_date:
+            base_query += " AND created_at <= :end_date"
+            params["end_date"] = end_date
+        if is_verified is not True:
+            base_query += " AND is_verified = False"
+        if account_status is not None:
+            base_query += " AND status = :account_status"
+            params["account_status"] = account_status
+
 
         time_series_query = f"""
             WITH monthly_stats AS (
@@ -68,29 +86,12 @@ def get_user_analytics(
         growth_metrics_dict = {"june_mom_percent": 0.0, "may_mom_percent": 0.0, "april_mom_percent": 0.0}
         
         for idx, row in enumerate(ts_results):
-            # Format the datetime into a clean string for the frontend charts (e.g., "Jun 2026")
             month_label = row.active_month.strftime("%b %Y") if row.active_month else "Unknown"
-            
-            historical_buckets.append({
-                "period": month_label,
-                "users_onboarded": row.new_users
-            })
+            historical_buckets.append({"period": month_label, "signups": row.new_users})
 
-            # Map the top 3 most recent months to your specific growth fields
-            if idx == 0:
-                growth_metrics_dict["june_mom_percent"] = float(row.mom_growth)
-            elif idx == 1:
-                growth_metrics_dict["may_mom_percent"] = float(row.mom_growth)
-            elif idx == 2:
-                growth_metrics_dict["april_mom_percent"] = float(row.mom_growth)
-        
-        # 3. Append date filters safely if the user provided them
-        if start_date:
-            base_query += " AND created_at >= :start_date"
-            params["start_date"] = start_date
-        if end_date:
-            base_query += " AND created_at <= :end_date"
-            params["end_date"] = end_date
+            if idx == 0: growth_metrics_dict["june_mom_percent"] = float(row.mom_growth)
+            elif idx == 1: growth_metrics_dict["may_mom_percent"] = float(row.mom_growth)
+            elif idx == 2: growth_metrics_dict["april_mom_percent"] = float(row.mom_growth)
 
         # Execute with safely bound parameters
         result = db.execute(text(base_query), params).fetchone()

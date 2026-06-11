@@ -16,7 +16,11 @@ router = APIRouter(
 def get_economics_analytics(
     db: Session = Depends(get_db),
     start_date: Optional[datetime] = Query(None, description="Filter from date"),
-    end_date: Optional[datetime] = Query(None, description="Filter up to date")
+    end_date: Optional[datetime] = Query(None, description="Filter up to date"),
+    deal_id: Optional[int] = Query(None, description="Filter by deal ID"),
+    min_amount: Optional[float] = Query(None, description = "Filter by minimum reward amount"),
+    max_amount: Optional[float] = Query(None, description = "Filter by maximum reward amount"),
+    reward_type: Optional[str] = Query(None, description = "Filter by reward type")
 ):
     try:
         # Ledger Query with Date Filters
@@ -35,6 +39,18 @@ def get_economics_analytics(
         if end_date:
             ledger_query += " AND created_at <= :end_date"
             params["end_date"] = end_date
+        if deal_id:
+            ledger_query += " AND deal_id = :deal_id"
+            params["deal_id"] = deal_id
+        if min_amount:
+            ledger_query += " AND amount >= :min_amount"
+            params["min_amount"] = min_amount
+        if max_amount:
+            ledger_query += " AND amount <= :max_amount"
+            params["max_amount"] = max_amount
+        if reward_type:
+            ledger_query += " AND type = :reward_type"
+            params["reward_type"] = reward_type
 
         ledger_result = db.execute(text(ledger_query), params).fetchone()
 

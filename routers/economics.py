@@ -54,11 +54,12 @@ def get_economics_analytics(
             ledger_query += " AND amount <= :max_amount"
             params["max_amount"] = max_amount
         
-        if reward_type is not None and reward_type in ["pending_reward", "final_reward", "redeem_cash_back", "rejected_reward"]:
-            ledger_query += " AND type = :reward_type"
-            params["reward_type"] = reward_type
-        else:
-            raise HTTPException(status_code = 400, detail = f"Invalid reward type: {reward_type}")
+        if reward_type:
+            if reward_type in ["pending_reward", "final_reward", "redeem_cash_back", "rejected_reward"]:
+                ledger_query += " AND type = :reward_type"
+                params["reward_type"] = reward_type
+            else:
+                raise HTTPException(status_code = 400, detail = f"Invalid reward type: {reward_type}")
         
         ledger_result = db.execute(text(ledger_query), params).fetchone()
 

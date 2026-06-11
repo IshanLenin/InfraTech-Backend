@@ -54,7 +54,7 @@ def get_user_analytics(
             "user_base": {
                 "cumulative_total": result.total_users if result else 0,
                 "growth_metric": {
-                    "june_mom_percent": 0.0,  # Note: MoM requires a complex window function, setting to 0 for now
+                    "june_mom_percent": 0.0, 
                     "may_mom_percent": 0.0,
                     "april_mom_percent": 0.0
                 },

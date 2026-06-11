@@ -19,6 +19,10 @@ def get_conversion_analytics(
     end_date: Optional[datetime] = Query(None, description="Filter up to date")
 ):
     try:
+
+        if start_date and end_date is not None and start_date > end_date:
+            raise HTTPException(status_code = 400, detail = "Invalid date range")
+        
         base_query = """
             SELECT 
                 COUNT(id) FILTER (WHERE type = 'redirect_reward') AS total_redirects,

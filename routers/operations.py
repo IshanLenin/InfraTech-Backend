@@ -20,6 +20,10 @@ def get_operations_analytics(
     end_date: Optional[datetime] = Query(None, description="Filter up to date")
 ):
     try:
+        
+        if start_date and end_date is not None and start_date > end_date:
+            raise HTTPException(status_code = 400, detail = "Invalid date range")
+
         params = {}
         date_filter_sql = ""
         

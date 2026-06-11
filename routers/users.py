@@ -20,7 +20,9 @@ def get_user_analytics(
     account_status: Optional[str] = Query(None, description="Filter by account status")
 ):
     try:
-
+        
+        if start_date and end_date is not None and start_date < end_date:
+            raise HTTPException(status_code = 400, detail="Invalid date range")
         params={}
         date_filter_sql = ""
 
@@ -44,12 +46,15 @@ def get_user_analytics(
         if end_date:
             base_query += " AND created_at <= :end_date"
             params["end_date"] = end_date
+        
         if is_verified is not True:
             base_query += " AND is_verified = False"
-        if account_status is not None:
+        
+        if account_status is not None and account_status in ['active', 'inactive']:
             base_query += " AND status = :account_status"
             params["account_status"] = account_status
-
+        else:
+            raise HTTPException(status_code=400, detail=f"Invalid account status: {account_status}")
 
         time_series_query = f"""
             WITH monthly_stats AS (
@@ -87,7 +92,7 @@ def get_user_analytics(
         
         for idx, row in enumerate(ts_results):
             month_label = row.active_month.strftime("%b %Y") if row.active_month else "Unknown"
-            historical_buckets.append({"period": month_label, "signups": row.new_users})
+            historical_buckets.append({"period": month_label, "users_onboarded": row.new_users})
 
             if idx == 0: growth_metrics_dict["june_mom_percent"] = float(row.mom_growth)
             elif idx == 1: growth_metrics_dict["may_mom_percent"] = float(row.mom_growth)

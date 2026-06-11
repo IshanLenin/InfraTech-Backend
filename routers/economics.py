@@ -23,6 +23,11 @@ def get_economics_analytics(
     reward_type: Optional[str] = Query(None, description = "Filter by reward type")
 ):
     try:
+        if min_amount is not None and max_amount is not None and min_amount > max_amount:
+            raise HTTPException(status_code=400, detail=f"Invalid amount range") 
+        if start_date is not None and end_date is not None and start_date > end_date:
+            raise HTTPException(status_code=400, detail=f"Invalid date range")
+
         # Ledger Query with Date Filters
         ledger_query = """
             SELECT 
@@ -48,10 +53,13 @@ def get_economics_analytics(
         if max_amount:
             ledger_query += " AND amount <= :max_amount"
             params["max_amount"] = max_amount
-        if reward_type:
+        
+        if reward_type is not None and reward_type in ["pending_reward", "final_reward", "redeem_cash_back", "rejected_reward"]:
             ledger_query += " AND type = :reward_type"
             params["reward_type"] = reward_type
-
+        else:
+            raise HTTPException(status_code = 400, detail = f"Invalid reward type: {reward_type}")
+        
         ledger_result = db.execute(text(ledger_query), params).fetchone()
 
         # Global Loyalty Query (Usually Unfiltered by date to show total running liability)

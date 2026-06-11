@@ -18,7 +18,7 @@ def get_user_analytics(
     end_date: Optional[datetime] = Query(None, description="Filter up to date (YYYY-MM-DD)")
 ):
     try:
-        params=""
+        params={}
         date_filter_sql = ""
         # We fetch all the metrics in a single database hit for maximum performance
         base_query = """
@@ -73,7 +73,7 @@ def get_user_analytics(
             
             historical_buckets.append({
                 "period": month_label,
-                "signups": row.new_users
+                "users_onboarded": row.new_users
             })
 
             # Map the top 3 most recent months to your specific growth fields
@@ -105,8 +105,8 @@ def get_user_analytics(
         return {
             "user_base": {
                 "cumulative_total": result.total_users if result else 0,
-                "growth_metrics": growth_metrics_dict,         
-                "historical_buckets": historical_buckets       
+                "growth_metric": growth_metrics_dict,         
+                "historical_data": historical_buckets       
             },
             "status_distribution": {
                 "verified": result.verified_users if result else 0,

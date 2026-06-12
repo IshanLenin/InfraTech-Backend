@@ -5,6 +5,7 @@ from database import engine
 import models
 from fastapi.responses import RedirectResponse
 
+
 models.Base.metadata.create_all(bind=engine)
 
 app = FastAPI(
@@ -35,3 +36,4 @@ def health_check():
 @app.get("/", include_in_schema=False)
 def root_redirect():
     return RedirectResponse(url="/docs")
+
